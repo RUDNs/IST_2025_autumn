@@ -83,7 +83,6 @@ class LineSearchTool(object):
             return oracle.grad_directional(x_k, d_k, alpha)
 
         phi0         = phi(0.0)
-        grad_phi0    = grad_phi(0.0)
 
         # Условия Армихо
         if self._method == "Armijo":
@@ -97,16 +96,17 @@ class LineSearchTool(object):
 
         # Сильные условия Вульфа
         if self._method == "Wolfe":
-            alpha, phi_res, phi0, derphi_res = scipy.optimize.linesaerch.scalar_search_wolfe2(
-                phi      = phi,
-                derphi   = grad_phi,
-                phi0     = phi0,
-                derphi0  = grad_phi0,
-                c1       = self.c1,
-                c2       = self.c2,
-            )
+            alpha = scipy.optimize.line_search(
+                f          = oracle.func,
+                myfprime   = oracle.grad,
+                xk         = x_k,
+                pk         = d_k,
+                c1         = self.c1,
+                c2         = self.c2,
+                amax       = self.alpha_0,
+            )[0]
 
-            if derphi_res is None:
+            if alpha is None:
                 if previous_alpha is None:
                     alpha = self.alpha_0
                 else:
@@ -211,13 +211,16 @@ def gradient_descent(oracle, x_0, tolerance = 1e-5, max_iter = 10000,
 
         return x_star, message, history
 
-    initial_grad_norm = np.linalg.norm(oracle.grad(x_0))
-    if initial_grad_norm ** 2 < tolerance:
+    initial_grad        = oracle.grad(x_0)
+    initial_grad_norm   = initial_grad @ initial_grad
+    if initial_grad_norm < tolerance:
         if trace == True:
             history["time"].append((datetime.now() - start_time).total_seconds())
-            history["func"].append(oracle.func(x_0))
-            history["grad_norm"].append(np.linalg.norm(oracle.grad(x_0)))
-            history["x"].append(x_0 if x_0.size <= 2 else None)
+            history["func"].append(oracle.func(x_0).item())
+            history["grad_norm"].append((np.sqrt(initial_grad_norm)).item())
+            if x_0.size <= 2:
+                history["x"].append(x_0)
+
 
         message = "success"
         x_star = x_0
@@ -248,14 +251,24 @@ def gradient_descent(oracle, x_0, tolerance = 1e-5, max_iter = 10000,
 
                 return x_star, message, history
 
-            current_func_val    = oracle.func(x_k)
-            current_grad_val    = oracle.grad(x_k)
-            current_grad_norm   = np.linalg.norm(current_grad_val)
+            current_func_val = oracle.func(x_k)
             if np.isnan(current_func_val).any() or \
-               np.isinf(current_func_val).any() or \
-               np.isnan(current_grad_val).any() or \
-               np.isinf(current_grad_val).any() or \
-               np.isnan(current_grad_norm).any() or \
+               np.isinf(current_func_val).any():
+                message = "computational_error"
+                x_star = x_k
+
+                return x_star, message, history
+
+            current_grad_val = oracle.grad(x_k)
+            if np.isnan(current_grad_val).any() or \
+               np.isinf(current_grad_val).any():
+                message = "computational_error"
+                x_star = x_k
+
+                return x_star, message, history
+
+            current_grad_norm = current_grad_val @ current_grad_val
+            if np.isnan(current_grad_norm).any() or \
                np.isinf(current_grad_norm).any():
                 message = "computational_error"
                 x_star = x_k
@@ -272,11 +285,12 @@ def gradient_descent(oracle, x_0, tolerance = 1e-5, max_iter = 10000,
 
             if trace == True:
                 history["time"].append((datetime.now() - start_time).total_seconds())
-                history["func"].append(current_func_val)
-                history["grad_norm"].append(np.linalg.norm(current_grad_val))
-                history["x"].append(x_k if x_k.size <= 2 else None)
+                history["func"].append(current_func_val.item())
+                history["grad_norm"].append((np.sqrt(current_grad_norm)).item())
+                if x_k.size <= 2:
+                    history["x"].append(x_k)
 
-            if current_grad_norm ** 2 < ratio_tolerance * (initial_grad_norm ** 2):
+            if current_grad_norm < ratio_tolerance * initial_grad_norm:
                 message = "success"
                 x_star = x_k
 
@@ -374,13 +388,16 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
 
         return x_star, message, history
 
-    initial_grad_norm = np.linalg.norm(oracle.grad(x_0))
-    if initial_grad_norm ** 2 < tolerance:
+    initial_grad        = oracle.grad(x_0)
+    initial_grad_norm   = initial_grad @ initial_grad
+    if initial_grad_norm < tolerance:
         if trace == True:
             history["time"].append((datetime.now() - start_time).total_seconds())
-            history["func"].append(oracle.func(x_0))
-            history["grad_norm"].append(np.linalg.norm(oracle.grad(x_0)))
-            history["x"].append(x_0 if x_0.size <= 2 else None)
+            history["func"].append((oracle.func(x_0)))
+            history["grad_norm"].append(np.sqrt(initial_grad_norm).item())
+
+            if x_0.size <= 2:
+                history["x"].append(x_0)
 
         message = "success"
         x_star = x_0
@@ -398,11 +415,16 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
             current_hess_matrix     = oracle.hess(x_k)
             current_grad_val        = oracle.grad(x_k)
             try:
-                # d_k = scipy.linalg.cho_solve(scipy.linalg.cho_factor(current_hess_matrix), \
-                #                              -current_grad_val)
+                # d_k = scipy.linalg.cho_solve(scipy.linalg.cho_factor(current_hess_matrix), -current_grad_val)
                 d_k = np.linalg.solve(current_hess_matrix, -current_grad_val)
             except LinAlgError:
-                # message = "newton_direction_error"
+                message = "computational_error"
+                x_star = x_k
+
+                return x_star, message, history
+
+            if np.isnan(d_k).any() or \
+               np.isinf(d_k).any():
                 message = "computational_error"
                 x_star = x_k
 
@@ -423,19 +445,27 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
 
                 return x_star, message, history
 
-            current_func_val    = oracle.func(x_k)
-            current_grad_val    = oracle.grad(x_k)
-            current_grad_norm   = np.linalg.norm(current_grad_val)
+            current_func_val = oracle.func(x_k)
             if np.isnan(current_func_val).any() or \
-               np.isinf(current_func_val).any() or \
-               np.isnan(current_grad_val).any() or \
-               np.isinf(current_grad_val).any() or \
-               np.isnan(current_grad_norm).any() or \
-               np.isinf(current_grad_norm).any():
+               np.isinf(current_func_val).any():
                 message = "computational_error"
                 x_star = x_k
 
                 return x_star, message, history
+
+            current_grad_val = oracle.grad(x_k)
+            if np.isnan(current_grad_val).any() or \
+               np.isinf(current_grad_val).any():
+                message = "computational_error"
+                x_star = x_k
+
+                return x_star, message, history
+
+            current_grad_norm = current_grad_val @ current_grad_val
+            if np.isnan(current_grad_norm).any() or \
+               np.isinf(current_grad_norm).any():
+                message = "computational_error"
+                x_star = x_k
 
             if display == True:
                 print(f"Текущая точка -                                 {x_k:.5f}")
@@ -449,10 +479,12 @@ def newton(oracle, x_0, tolerance=1e-5, max_iter=100,
             if trace == True:
                 history["time"].append((datetime.now() - start_time).total_seconds())
                 history["func"].append(current_func_val)
-                history["grad_norm"].append(np.linalg.norm(current_grad_val))
-                history["x"].append(x_k if x_k.size <= 2 else None)
+                history["grad_norm"].append((np.sqrt(current_grad_norm)).item())
 
-            if current_grad_norm ** 2 < ratio_tolerance * (initial_grad_norm ** 2):
+                if x_k.size <= 2:
+                    history["x"].append(x_k)
+
+            if current_grad_norm < ratio_tolerance * initial_grad_norm:
                 message = "success"
                 x_star = x_k
 

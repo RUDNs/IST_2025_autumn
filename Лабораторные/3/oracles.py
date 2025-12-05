@@ -89,64 +89,77 @@ class LogRegL2Oracle(BaseSmoothOracle):
 
         # TODO: Implement
 
-        m = self.b.size
-        if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
-            # raise AssertionError()
-            return None
+        # m = self.b.size
+        # if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
+        #     # raise AssertionError()
+        #     return None
 
-        if scipy.sparse.issparse(x):
-            sprase_x                  = scipy.sparse.csr_matrix(x)
-            sparse_Ax                 = scipy.sparse.csr_matrix(self.matvec_Ax(sprase_x))
-            sparse_b                  = scipy.sparse.csr_matrix(self.b)
-            sparse_result             = -sparse_b @ sparse_Ax
+        # if scipy.sparse.issparse(x):
+        #     sprase_x                  = scipy.sparse.csr_matrix(x)
+        #     sparse_Ax                 = scipy.sparse.csr_matrix(self.matvec_Ax(sprase_x))
+        #     sparse_b                  = scipy.sparse.csr_matrix(self.b)
+        #     sparse_result             = -sparse_b @ sparse_Ax
 
-            return (-1.0 / m) * np.sum(scipy.stats.log(expit(sparse_result.toarray()))) + \
-                   (self.regcoef / 2.0) * (scipy.linalg.norm(sprase_x) ** 2)
-        else:
-            return (1.0 / m) * np.sum(np.logaddexp(0, -self.b * self.matvec_Ax(x))) + \
-                   (self.regcoef / 2.0) * (np.linalg.norm(x) ** 2)
+        #     return (-1.0 / m) * np.sum(scipy.stats.log(expit(sparse_result.toarray()))) + \
+        #            (self.regcoef / 2.0) * (scipy.linalg.norm(sprase_x) ** 2)
+        # else:
+        #     return (1.0 / m) * np.sum(np.logaddexp(0, -self.b * self.matvec_Ax(x))) + \
+        #            (self.regcoef / 2.0) * (np.linalg.norm(x) ** 2)
+
+        z = self.matvec_Ax(x) * self.b
+        return (1.0 / self.b.size) * np.mean(np.log(1.0 + np.exp(-z))) + 0.5 * self.regcoef * (x.T @ x)
 
     def grad(self, x):
 
         # TODO: Implement
 
-        m = self.b.size
-        if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
-            # raise AssertionError()
-            return None
+        # m = self.b.size
+        # if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
+        #     # raise AssertionError()
+        #     return None
 
-        if scipy.sparse.issparse(x):
-            sparse_x                  = scipy.sparse.csr_matrix(x)
-            sparse_Ax                 = scipy.sparse.csr_matrix(self.matvec_Ax(sparse_x))
-            sparse_b                  = scipy.sparse.csr_matrix(self.b)
-            sparse_b_Ax               = scipy.sparse.csr_matrix(-sparse_b * sparse_Ax)
-            sparse_ATx                = scipy.sparse.csr_matrix(self.matvec_ATx(sparse_b * scipy.special.expit(sparse_b_Ax.toarray())))
+        # if scipy.sparse.issparse(x):
+        #     sparse_x                  = scipy.sparse.csr_matrix(x)
+        #     sparse_Ax                 = scipy.sparse.csr_matrix(self.matvec_Ax(sparse_x))
+        #     sparse_b                  = scipy.sparse.csr_matrix(self.b)
+        #     sparse_b_Ax               = scipy.sparse.csr_matrix(-sparse_b * sparse_Ax)
+        #     sparse_ATx                = scipy.sparse.csr_matrix(self.matvec_ATx(sparse_b * scipy.special.expit(sparse_b_Ax.toarray())))
 
-            return (-1.0 / m) * np.sum(sparse_ATx) + self.regcoef * sparse_x
-        else:
-            return (-1.0 / m) * np.sum(self.matvec_ATx(self.b * expit(-self.b * self.matvec_Ax(x)))) + self.regcoef * x
+        #     return (-1.0 / m) * np.sum(sparse_ATx) + self.regcoef * sparse_x
+        # else:
+        #     return (-1.0 / m) * np.sum(self.matvec_ATx(self.b * expit(-self.b * self.matvec_Ax(x)))) + self.regcoef * x
+
+        z = self.matvec_Ax(x) * self.b
+        return (-1.0 / self.b.size) * (self.matvec_ATx(expit(z) - 1.0) * self.b) + self.regcoef * x
 
     def hess(self, x):
 
         # TODO: Implement
 
-        m = self.b.size
-        if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
-            # raise AssertionError()
-            return None
+        # m = self.b.size
+        # if m != self.matvec_ATx(x).size or m != self.matvec_Ax(x).size:
+        #     # raise AssertionError()
+        #     return None
 
+        # if scipy.sparse.issparse(x):
+        #     sparse_x                  = scipy.sparse.csr_matrix(x)
+        #     sparse_matvec_Ax          = scipy.sparse.csr_matrix(self.matvec_Ax(sparse_x))
+        #     sparse_b                  = scipy.sparse.csr_matrix(self.b)
+        #     sigmoid                   = expit((sparse_b * sparse_matvec_Ax).toarray())
+        #     sparse_sigmoid            = scipy.sparse.csr_matrix(sigmoid)
+        #     sparse_matmat_ATsA        = scipy.sparse.csr_matrix(sparse_sigmoid * (1.0 - sparse_sigmoid))
+
+        #     return (1.0 / m) * sparse_matmat_ATsA + self.regcoef * sparse_x
+        # else:
+        #     sigmoid = expit(self.b * self.matvec_Ax(x))
+        #     return (1.0 / m) * self.matmat_ATsA(sigmoid * (1.0 - sigmoid)) + self.regcoef * np.eye(x.size)
+
+        z = self.matvec_Ax(x) * self.b
+        s = expit(z) * (1.0 - expit(z))
         if scipy.sparse.issparse(x):
-            sparse_x                  = scipy.sparse.csr_matrix(x)
-            sparse_matvec_Ax          = scipy.sparse.csr_matrix(self.matvec_Ax(sparse_x))
-            sparse_b                  = scipy.sparse.csr_matrix(self.b)
-            sigmoid                   = expit((sparse_b * sparse_matvec_Ax).toarray())
-            sparse_sigmoid            = scipy.sparse.csr_matrix(sigmoid)
-            sparse_matmat_ATsA        = scipy.sparse.csr_matrix(sparse_sigmoid * (1.0 - sparse_sigmoid))
-
-            return (1.0 / m) * sparse_matmat_ATsA + self.regcoef * sparse_x
+            return (-1.0 / self.b.size) * (self.matmat_ATsA(s)) + self.regcoef * scipy.sparse.identity(x.size)
         else:
-            sigmoid = expit(self.b * self.matvec_Ax(x))
-            return (1.0 / m) * self.matmat_ATsA(sigmoid * (1.0 - sigmoid)) + self.regcoef * np.eye(x.size)
+            return (-1.0 / self.b.size) * (self.matmat_ATsA(s)) + self.regcoef * np.eye(x.size)
 
 class LogRegL2OptimizedOracle(LogRegL2Oracle):
     """
@@ -172,18 +185,9 @@ def create_log_reg_oracle(A, b, regcoef, oracle_type='usual'):
     Auxiliary function for creating logistic regression oracles.
         `oracle_type` must be either 'usual' or 'optimized'
     """
-    matvec_Ax = lambda x: x  # TODO: Implement
-    matvec_ATx = lambda x: x  # TODO: Implement
-
-    def matmat_ATsA(s):
-        # TODO: Implement
-
-        if scipy.sparse.issparse(A):
-            return (A.T.dot(scipy.sparse.diags(s))).dot(A)
-        else:
-            return (A.T.dot(np.diag(s))).dot(A)
-    
-        return None
+    matvec_Ax = lambda x :       A @ x
+    matvec_ATx = lambda x :      A.T @ x
+    matmat_ATsA = lambda s :     (A.T * s) @ A
 
     if oracle_type == "usual":
         oracle = LogRegL2Oracle
